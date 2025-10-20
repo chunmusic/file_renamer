@@ -1,0 +1,88 @@
+name: Build & Package File Renamer (Windows)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"        # build when you push version tags like v1.0.0
+  workflow_dispatch: {}  # allow manual run
+
+permissions:
+  contents: write        # needed for creating releases
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- Python + uv ----
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        shell: pwsh
+        run: |
+          irm https://astral.sh/uv/install.ps1 | iex
+          uv --version
+
+      # ---- Install dependencies ----
+      - name: Install project dependencies
+        shell: pwsh
+        run: |
+          uv pip install PySide6 PySide6-Fluent-Widgets PySideSix-Frameless-Window pyinstaller
+
+      # ---- Build EXE ----
+      - name: Build PyInstaller EXE
+        shell: pwsh
+        run: >
+          uv run pyinstaller --onefile --windowed
+          --name FileRenamer
+          --hidden-import qfluentwidgets
+          --hidden-import pyside6_frameless_window
+          --collect-all qfluentwidgets
+          --collect-all pyside6_frameless_window
+          file_renamer.py
+
+      # ---- Install Inno Setup ----
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /?
+
+      # ---- Build installer ----
+      - name: Build Inno installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          & $iscc FileRenamer.iss /Qp
+          Get-ChildItem installer
+
+      # ---- Upload artifacts ----
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileRenamer-EXE
+          path: dist/FileRenamer.exe
+
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileRenamer-Installer
+          path: installer/**/*.exe
+
+      # ---- Optional: create release on tag ----
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "File Renamer ${{ github.ref_name }}"
+          tag_name: "${{ github.ref_name }}"
+          generate_release_notes: true
+          files: |
+            dist/FileRenamer.exe
+            installer/*.exe

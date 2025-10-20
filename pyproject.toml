@@ -1,0 +1,14 @@
+[project]
+name = "file-renamer"
+version = "1.0.0"
+description = "A Fluent UI-based file renamer built with PySide6 and qfluentwidgets"
+requires-python = ">=3.9"
+
+dependencies = [
+  "PySide6",
+  "PySide6-Fluent-Widgets",
+  "PySideSix-Frameless-Window"
+]
+
+[dependency-groups]
+dev = ["pyinstaller"]
