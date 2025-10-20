@@ -3,17 +3,18 @@ name: Build & Package File Renamer (Windows)
 on:
   push:
     tags:
-      - "v*.*.*"        # build when you push version tags like v1.0.0
-  workflow_dispatch: {}  # allow manual run
+      - "v*.*.*"        # Build when you push a version tag (e.g., v1.0.0)
+  workflow_dispatch: {}  # Allow manual run from GitHub UI
 
 permissions:
-  contents: write        # needed for creating releases
+  contents: write        # Required to create releases
 
 jobs:
   build-windows:
     runs-on: windows-latest
 
     steps:
+      # ---- Checkout repo ----
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -23,11 +24,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install uv
-        shell: pwsh
-        run: |
-          irm https://astral.sh/uv/install.ps1 | iex
-          uv --version
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
 
       # ---- Install dependencies ----
       - name: Install project dependencies
@@ -35,8 +33,8 @@ jobs:
         run: |
           uv pip install PySide6 PySide6-Fluent-Widgets PySideSix-Frameless-Window pyinstaller
 
-      # ---- Build EXE ----
-      - name: Build PyInstaller EXE
+      # ---- Build PyInstaller EXE ----
+      - name: Build FileRenamer EXE
         shell: pwsh
         run: >
           uv run pyinstaller --onefile --windowed
@@ -54,7 +52,7 @@ jobs:
           choco install innosetup --no-progress -y
           "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /?
 
-      # ---- Build installer ----
+      # ---- Compile the Inno installer ----
       - name: Build Inno installer
         shell: pwsh
         run: |
@@ -63,19 +61,19 @@ jobs:
           Get-ChildItem installer
 
       # ---- Upload artifacts ----
-      - name: Upload EXE
+      - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: FileRenamer-EXE
           path: dist/FileRenamer.exe
 
-      - name: Upload Installer
+      - name: Upload Installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: FileRenamer-Installer
           path: installer/**/*.exe
 
-      # ---- Optional: create release on tag ----
+      # ---- Optional: create GitHub Release on tag ----
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
