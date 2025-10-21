@@ -1,22 +1,24 @@
-name: Build & Package File Renamer (Windows)
+name: Build & Release File Renamer (Windows)
 
 on:
   push:
     tags:
-      - "v*.*.*"
-  workflow_dispatch: {}
+      - "v*.*.*"          # run when you create a tag like v1.0.0
+  workflow_dispatch: {}    # manual run
 
 permissions:
-  contents: write
+  contents: write          # needed to create releases
 
 jobs:
   build-windows:
     runs-on: windows-latest
 
     steps:
+      # 1) Checkout
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 2) Python + uv
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -25,24 +27,23 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v3
 
-      # Create a local virtual environment in the repo
+      # 3) Create venv and install deps
       - name: Create venv (.venv)
         shell: pwsh
         run: |
           uv venv --python "$env:PythonLocation\python.exe"
           Get-ChildItem .venv
 
-      # Install deps into .venv (note the -p .venv)
       - name: Install project dependencies
         shell: pwsh
         run: |
           uv pip install -p .venv PySide6 PySide6-Fluent-Widgets PySideSix-Frameless-Window pyinstaller
 
-      # Build EXE using that venv
-      - name: Build FileRenamer EXE
+      # 4) Build EXE (AV-friendly flags)
+      - name: Build PyInstaller EXE
         shell: pwsh
         run: >
-          uv run -p .venv pyinstaller --onefile --windowed
+          uv run -p .venv pyinstaller --onefile --windowed --noupx --clean
           --name FileRenamer
           --hidden-import qfluentwidgets
           --hidden-import pyside6_frameless_window
@@ -56,35 +57,63 @@ jobs:
           if (-not (Test-Path "dist\FileRenamer.exe")) { throw "EXE not found" }
           Get-ChildItem dist
 
+      # 5) (Optional) Code-sign the EXE if cert secrets are provided
+      #    Add these secrets in repo settings:
+      #    - CODESIGN_PFX  (base64 of your .pfx)
+      #    - CODESIGN_PWD  (password)
+      - name: Import code-signing cert
+        if: ${{ secrets.CODESIGN_PFX && secrets.CODESIGN_PWD }}
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String("${{ secrets.CODESIGN_PFX }}")
+          [IO.File]::WriteAllBytes("codesign.pfx", $bytes)
+
+      - name: Sign EXE
+        if: ${{ secrets.CODESIGN_PFX && secrets.CODESIGN_PWD }}
+        shell: pwsh
+        run: |
+          $signtool = (Get-Command signtool.exe -ErrorAction Stop).Source
+          & $signtool sign /fd SHA256 /f codesign.pfx /p "${{ secrets.CODESIGN_PWD }}" `
+            /tr http://timestamp.digicert.com /td SHA256 dist\FileRenamer.exe
+
+      # 6) Install Inno Setup and build installer
       - name: Install Inno Setup
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) {
-            throw "Inno Setup compiler not found"
+            throw "ISCC.exe not found after install"
           }
 
+      # If you want Inno to sign the installer, ensure your .iss has:
+      #   SignTool=signtool sign /fd SHA256 /f codesign.pfx /p $p /tr http://timestamp.digicert.com /td SHA256 $f
+      # and we pass env var p below when secrets exist.
       - name: Build Inno installer
         shell: pwsh
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if ("${{ secrets.CODESIGN_PFX && secrets.CODESIGN_PWD }}" -ne "") {
+            $env:p = "${{ secrets.CODESIGN_PWD }}"
+          }
           & $iscc FileRenamer.iss /Qp
           Get-ChildItem installer
 
-      # Artifacts
+      # 7) Upload artifacts to the workflow run (optional for debugging)
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: FileRenamer-EXE
           path: dist/FileRenamer.exe
+          if-no-files-found: error
 
       - name: Upload Installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: FileRenamer-Installer
           path: installer/**/*.exe
+          if-no-files-found: error
 
-      # Release on tag
+      # 8) Create GitHub Release with raw installer.exe (no zip)
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
