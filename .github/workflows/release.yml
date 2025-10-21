@@ -73,21 +73,6 @@ jobs:
           & $iscc FileRenamer.iss /Qp
           Get-ChildItem installer
 
-      # Upload artifacts to the workflow run (optional but handy)
-      - name: Upload EXE artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: FileRenamer-EXE
-          path: dist/FileRenamer.exe
-          if-no-files-found: error
-
-      - name: Upload Installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: FileRenamer-Installer
-          path: installer/**/*.exe
-          if-no-files-found: error
-
       # Create GitHub Release and attach raw installer.exe (no zip)
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
@@ -97,5 +82,4 @@ jobs:
           tag_name: "${{ github.ref_name }}"
           generate_release_notes: true
           files: |
-            dist/FileRenamer.exe
             installer/*.exe
