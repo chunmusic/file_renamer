@@ -1,5 +1,5 @@
 #define MyAppName        "File Renamer"
-#define MyAppVersion     "1.0.0"
+#define MyAppVersion     "0.0.1"
 #define MyAppPublisher   "Your Name"
 #define MyAppURL         "https://portfolio.chunzps.com"
 #define MyAppExeName     "FileRenamer.exe"
